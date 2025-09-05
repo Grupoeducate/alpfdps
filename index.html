@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Informe Interactivo de Resultados</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --primary-color: #0056b3;
@@ -46,6 +47,12 @@
             border-bottom: 2px solid var(--border-color);
             padding-bottom: 20px;
         }
+        
+        #schoolLogo {
+            max-height: 80px;
+            width: auto;
+            margin-bottom: 15px;
+        }
 
         header h1 {
             color: var(--primary-color);
@@ -57,6 +64,32 @@
             margin: 5px 0 0;
             color: #6c757d;
             font-size: 1.1em;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .chart-container {
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: #fdfdff;
+        }
+        
+        .chart-container h3 {
+            text-align: center;
+            margin-top: 0;
+            color: #495057;
+        }
+        
+        @media (max-width: 992px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
         }
 
         .filters {
@@ -155,12 +188,18 @@
             background-color: #495057;
         }
 
-        tbody tr:nth-child(even) {
-            background-color: #f8f9fa;
-        }
-
         tbody tr:hover {
             background-color: var(--row-hover);
+        }
+        
+        .student-link {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 500;
+            cursor: pointer;
+        }
+        .student-link:hover {
+            text-decoration: underline;
         }
 
         .score { text-align: center; font-weight: 600; border-radius: 4px; padding: 5px 8px; }
@@ -168,15 +207,68 @@
         .score-mid { background-color: var(--score-mid); color: var(--score-mid-text); }
         .score-low { background-color: var(--score-low); color: var(--score-low-text); }
         .text-center { text-align: center; }
+
+        .modal {
+            display: none; 
+            position: fixed; 
+            z-index: 1000; 
+            left: 0;
+            top: 0;
+            width: 100%; 
+            height: 100%; 
+            overflow: auto; 
+            background-color: rgba(0,0,0,0.5);
+            padding-top: 60px;
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 700px;
+            border-radius: 8px;
+            position: relative;
+        }
+
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            position: absolute;
+            top: 10px;
+            right: 20px;
+        }
+
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
 
     <div class="container">
         <header>
+            <img id="schoolLogo" src="logoeducate.png" alt="Logo de la Empresa">
             <h1 id="schoolNameHeader">Informe Interactivo de Resultados</h1>
             <p id="schoolInfoSubHeader"></p>
         </header>
+        
+        <div class="dashboard">
+            <div class="chart-container">
+                <h3 id="areaChartTitle">Rendimiento Promedio por Áreas</h3>
+                <canvas id="areaChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3 id="distChartTitle">Distribución de Desempeño</h3>
+                <canvas id="distributionChart"></canvas>
+            </div>
+        </div>
 
         <div class="filters">
             <div class="filter-group">
@@ -219,6 +311,14 @@
             </table>
         </div>
     </div>
+    
+    <div id="studentModal" class="modal">
+      <div class="modal-content">
+        <span id="closeModal" class="close-button">&times;</span>
+        <h3 id="studentModalTitle">Perfil del Estudiante</h3>
+        <canvas id="studentChart"></canvas>
+      </div>
+    </div>
 
     <script>
     document.addEventListener('DOMContentLoaded', async function() {
@@ -236,9 +336,15 @@
         const statsCounter = document.getElementById('statsCounter');
         const schoolNameHeader = document.getElementById('schoolNameHeader');
         const schoolInfoSubHeader = document.getElementById('schoolInfoSubHeader');
+        
+        const studentModal = document.getElementById('studentModal');
+        const closeModal = document.getElementById('closeModal');
+        const studentModalTitle = document.getElementById('studentModalTitle');
 
         let currentView = 'areas';
         let sortConfig = { key: 'Estudiante', direction: 'ascending' };
+        
+        let areaChartInstance, distributionChartInstance, studentChartInstance;
 
         const headers = {
             areas: [
@@ -284,8 +390,6 @@
                     const key = header[j].trim();
                     const value = values[j] ? values[j].trim() : '';
                     
-                    // --- CORRECCIÓN APLICADA AQUÍ ---
-                    // Tratar Grado y Grupo siempre como texto para evitar errores de tipo
                     if (key === 'Grado' || key === 'Grupo') {
                         record[key] = value;
                     } else if (!isNaN(value) && value !== '') {
@@ -355,9 +459,11 @@
                 bodyHTML += '<tr>';
                 headers[currentView].forEach(header => {
                     const value = student[header.key];
-                    const formattedValue = (typeof value === 'number' && value % 1 !== 0) ? value.toFixed(1) : (value || '-');
+                    const formattedValue = (typeof value === 'number' && !isNaN(value)) ? value.toFixed(1) : (value || '-');
                     
-                    if (header.key.startsWith('Promedio_') || (typeof value === 'number' && header.key !== 'Orden_Aplicacion')) {
+                    if(header.key === 'Estudiante'){
+                         bodyHTML += `<td><a href="#" class="student-link" data-student-name="${student.Estudiante}">${student.Estudiante}</a></td>`;
+                    } else if (header.key.startsWith('Promedio_') || (typeof value === 'number' && header.key !== 'Grado' && header.key !== 'Orden_Aplicacion')) {
                          bodyHTML += `<td class="text-center"><span class="score ${getScoreClass(value)}">${formattedValue}</span></td>`;
                     } else {
                         bodyHTML += `<td>${formattedValue}</td>`;
@@ -378,6 +484,13 @@
                         sortConfig.direction = 'ascending';
                     }
                     applyFilters();
+                });
+            });
+            
+            document.querySelectorAll('.student-link').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    showStudentModal(link.dataset.studentName);
                 });
             });
         }
@@ -421,8 +534,108 @@
             });
 
             renderTable(filteredData);
+            updateDashboardCharts(filteredData);
         }
         
+        function updateDashboardCharts(data) {
+            const areaLabels = ['Matemáticas', 'Lenguaje', 'C. Naturales', 'Sociales', 'Inglés'];
+            const areaKeys = ['Promedio_Matematicas', 'Promedio_Lenguaje', 'Promedio_Naturales', 'Promedio_Sociales', 'Promedio_Ingles'];
+            
+            const areaAverages = areaKeys.map(key => {
+                const validScores = data.map(d => d[key]).filter(score => score !== null && !isNaN(score));
+                return validScores.length > 0 ? validScores.reduce((a, b) => a + b, 0) / validScores.length : 0;
+            });
+
+            if (areaChartInstance) areaChartInstance.destroy();
+            areaChartInstance = new Chart(document.getElementById('areaChart'), {
+                type: 'bar',
+                data: {
+                    labels: areaLabels,
+                    datasets: [{
+                        label: 'Promedio',
+                        data: areaAverages,
+                        backgroundColor: 'rgba(0, 123, 255, 0.6)',
+                        borderColor: 'rgba(0, 123, 255, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true, max: 5 } },
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            const performanceCounts = { high: 0, mid: 0, low: 0 };
+            data.forEach(d => {
+                if (d.Promedio_General >= 4.0) performanceCounts.high++;
+                else if (d.Promedio_General >= 3.0) performanceCounts.mid++;
+                else performanceCounts.low++;
+            });
+
+            if (distributionChartInstance) distributionChartInstance.destroy();
+            distributionChartInstance = new Chart(document.getElementById('distributionChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Superior (>= 4.0)', 'Alto (3.0-3.9)', 'Básico/Bajo (< 3.0)'],
+                    datasets: [{
+                        data: [performanceCounts.high, performanceCounts.mid, performanceCounts.low],
+                        backgroundColor: ['#28a745', '#ffc107', '#dc3545'],
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+        
+        function showStudentModal(studentName) {
+            const studentRecords = allRecords.filter(r => r.Estudiante === studentName);
+            if (studentRecords.length === 0) return;
+            
+            const latestRecord = studentRecords.sort((a, b) => b.Orden_Aplicacion - a.Orden_Aplicacion)[0];
+            
+            studentModalTitle.textContent = `Perfil de ${latestRecord.Estudiante} (Prueba ${latestRecord.Prueba})`;
+            
+            const radarLabels = ['Matemáticas', 'Lenguaje', 'C. Naturales', 'Sociales', 'Inglés'];
+            const radarData = [
+                latestRecord.Promedio_Matematicas,
+                latestRecord.Promedio_Lenguaje,
+                latestRecord.Promedio_Naturales,
+                latestRecord.Promedio_Sociales,
+                latestRecord.Promedio_Ingles
+            ];
+
+            if (studentChartInstance) studentChartInstance.destroy();
+            studentChartInstance = new Chart(document.getElementById('studentChart'), {
+                type: 'radar',
+                data: {
+                    labels: radarLabels,
+                    datasets: [{
+                        label: 'Promedio por Área',
+                        data: radarData,
+                        fill: true,
+                        backgroundColor: 'rgba(0, 123, 255, 0.2)',
+                        borderColor: 'rgb(0, 123, 255)',
+                        pointBackgroundColor: 'rgb(0, 123, 255)',
+                    }]
+                },
+                options: {
+                    maintainAspectRatio: true,
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 5,
+                            angleLines: { color: 'rgba(0, 0, 0, 0.1)' },
+                            grid: { color: 'rgba(0, 0, 0, 0.1)' },
+                            pointLabels: { font: { size: 14 } }
+                        }
+                    }
+                }
+            });
+            
+            studentModal.style.display = "block";
+        }
+
         function initialize(metadata) {
             populateHeader(metadata);
             populateFilters(metadata);
@@ -445,6 +658,13 @@
                 viewAreasBtn.classList.remove('active');
                 applyFilters();
             });
+            
+            closeModal.onclick = () => studentModal.style.display = "none";
+            window.onclick = (event) => {
+                if (event.target == studentModal) {
+                    studentModal.style.display = "none";
+                }
+            }
         }
 
         loadData();
