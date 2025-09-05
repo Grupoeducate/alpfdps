@@ -78,6 +78,8 @@
             border: 1px solid var(--border-color);
             border-radius: 8px;
             background: #fdfdff;
+            min-height: 350px; /* Asegura una altura mínima */
+            position: relative;
         }
         
         .chart-container h3 {
@@ -86,9 +88,10 @@
             color: #495057;
         }
         
+        /* --- ESTA ES LA REGLA AÑADIDA PARA LA RESPONSIVIDAD --- */
         @media (max-width: 992px) {
             .dashboard {
-                grid-template-columns: 1fr;
+                grid-template-columns: 1fr; /* Cambia a una sola columna en pantallas pequeñas */
             }
         }
 
@@ -254,7 +257,7 @@
 
     <div class="container">
         <header>
-            <img id="schoolLogo" src="logoeducate.png" alt="Logo de la Empresa">
+            <img id="schoolLogo" src="logoeducate.png" alt="Logo de la Empresa" onerror="this.style.display='none'">
             <h1 id="schoolNameHeader">Informe Interactivo de Resultados</h1>
             <p id="schoolInfoSubHeader"></p>
         </header>
@@ -578,7 +581,7 @@
             distributionChartInstance = new Chart(document.getElementById('distributionChart'), {
                 type: 'doughnut',
                 data: {
-                    labels: ['Superior (>= 4.0)', 'Alto (3.0-3.9)', 'Básico/Bajo (< 3.0)'],
+                    labels: [`Superior (>= 4.0): ${performanceCounts.high}`, `Alto (3.0-3.9): ${performanceCounts.mid}`, `Básico/Bajo (< 3.0): ${performanceCounts.low}`],
                     datasets: [{
                         data: [performanceCounts.high, performanceCounts.mid, performanceCounts.low],
                         backgroundColor: ['#28a745', '#ffc107', '#dc3545'],
@@ -592,7 +595,10 @@
             const studentRecords = allRecords.filter(r => r.Estudiante === studentName);
             if (studentRecords.length === 0) return;
             
-            const latestRecord = studentRecords.sort((a, b) => b.Orden_Aplicacion - a.Orden_Aplicacion)[0];
+            const latestRecord = studentRecords.sort((a, b) => {
+                if (a.Prueba === b.Prueba) return b.Orden_Aplicacion - a.Orden_Aplicacion;
+                return a.Prueba > b.Prueba ? 1 : -1;
+            })[0];
             
             studentModalTitle.textContent = `Perfil de ${latestRecord.Estudiante} (Prueba ${latestRecord.Prueba})`;
             
