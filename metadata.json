@@ -1,0 +1,20 @@
+{
+  "schoolName": "ALFONSO LÓPEZ PUMAREJO - SEDE FRANCISCO DE PAULA SANTANDER (VALLE DEL CAUCA - CARTAGO)",
+  "schoolDane": "1256328652",
+  "filters": {
+    "grades": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "groups": [
+      "01"
+    ],
+    "tests": [
+      "ALFA",
+      "BETA",
+      "DELTA"
+    ]
+  }
+}
